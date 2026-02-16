@@ -60,6 +60,7 @@ class QueryRouterAgent(BaseGalaxyAgent):
         error_handoff = self._create_error_analysis_handoff()
         tool_handoff = self._create_custom_tool_handoff()
         tool_rec_handoff = self._create_tool_recommendation_handoff()
+        data_loading_handoff = self._create_data_loading_handoff()
 
         return Agent(
             self._get_model(),
@@ -68,6 +69,7 @@ class QueryRouterAgent(BaseGalaxyAgent):
                 error_handoff,
                 tool_handoff,
                 tool_rec_handoff,
+                data_loading_handoff,
                 str,  # Default: answer directly
             ],
             system_prompt=self.get_system_prompt(),
@@ -104,7 +106,11 @@ class QueryRouterAgent(BaseGalaxyAgent):
                 agent = ErrorAnalysisAgent(ctx.deps)
 
                 # Pass conversation history if available
-                message_history = ctx.messages[:-1] if hasattr(ctx, "messages") and ctx.messages else None
+                message_history = (
+                    ctx.messages[:-1]
+                    if hasattr(ctx, "messages") and ctx.messages
+                    else None
+                )
 
                 result = await agent.agent.run(
                     task,
@@ -116,9 +122,7 @@ class QueryRouterAgent(BaseGalaxyAgent):
                 return extract_result_content(result)
             except Exception as e:
                 log.error(f"Error analysis handoff failed: {e}")
-                return (
-                    f"I encountered an issue while analyzing the error. Please try again or contact support. Error: {e}"
-                )
+                return f"I encountered an issue while analyzing the error. Please try again or contact support. Error: {e}"
 
         return hand_off_to_error_analysis
 
@@ -151,7 +155,11 @@ class QueryRouterAgent(BaseGalaxyAgent):
                 agent = CustomToolAgent(ctx.deps)
 
                 # Pass conversation history if available
-                message_history = ctx.messages[:-1] if hasattr(ctx, "messages") and ctx.messages else None
+                message_history = (
+                    ctx.messages[:-1]
+                    if hasattr(ctx, "messages") and ctx.messages
+                    else None
+                )
 
                 result = await agent.agent.run(
                     request,
@@ -163,9 +171,7 @@ class QueryRouterAgent(BaseGalaxyAgent):
                 return extract_result_content(result)
             except Exception as e:
                 log.error(f"Custom tool handoff failed: {e}")
-                return (
-                    f"I encountered an issue while creating the tool. Please try again or contact support. Error: {e}"
-                )
+                return f"I encountered an issue while creating the tool. Please try again or contact support. Error: {e}"
 
         return hand_off_to_custom_tool
 
@@ -206,7 +212,52 @@ class QueryRouterAgent(BaseGalaxyAgent):
 
         return hand_off_to_tool_recommendation
 
-    async def process(self, query: str, context: Optional[dict[str, Any]] = None) -> AgentResponse:
+    def _create_data_loading_handoff(self):
+        """Create output function for data loading handoff."""
+
+        async def hand_off_to_data_loading(
+            ctx: RunContext[GalaxyAgentDependencies],
+            request: str,
+        ) -> str:
+            """Route to data loading agent for SRA data retrieval and collection organization.
+
+            Use this when the user:
+            - Wants to load/download SRA data (accessions like SRR...)
+            - Has uploaded a metadata table with SRA sample information
+            - Asks to fetch sequencing data from NCBI/ENA/SRA
+            - Wants to organize downloaded data into collections
+            - Mentions fasterq_dump or SRA toolkit
+            - Provides a table with columns like "Run Accession", "Fastq FTP", etc.
+
+            Do NOT use for:
+            - General file uploads (answer directly or use upload tool)
+            - Tool discovery (use hand_off_to_tool_recommendation)
+            - Tool errors (use hand_off_to_error_analysis)
+
+            Args:
+                request: Description of the data loading task, including any dataset IDs
+                         or accession numbers the user mentioned
+            """
+            from .data_loading import DataLoadingAgent
+
+            log.info(f"Router handing off to data_loading: '{request[:100]}...'")
+
+            try:
+                agent = DataLoadingAgent(ctx.deps)
+                result = await agent.process(request)
+                return result.content
+            except Exception as e:
+                log.error(f"Data loading handoff failed: {e}")
+                return (
+                    f"I encountered an issue while loading data. "
+                    f"Please try again or use the fasterq_dump tool directly. Error: {e}"
+                )
+
+        return hand_off_to_data_loading
+
+    async def process(
+        self, query: str, context: Optional[dict[str, Any]] = None
+    ) -> AgentResponse:
         """
         Process a query and return the response.
 
@@ -239,7 +290,9 @@ class QueryRouterAgent(BaseGalaxyAgent):
             log.warning(f"Router agent value error, using fallback: {e}")
             return self._handle_fallback(query, context, str(e))
 
-    def _build_query_with_context(self, query: str, context: Optional[dict[str, Any]]) -> str:
+    def _build_query_with_context(
+        self, query: str, context: Optional[dict[str, Any]]
+    ) -> str:
         """Build full query including conversation history if available."""
         if not context or "conversation_history" not in context:
             return query
@@ -257,12 +310,16 @@ class QueryRouterAgent(BaseGalaxyAgent):
 
         return history_text
 
-    def _handle_fallback(self, query: str, context: Optional[dict[str, Any]], error_msg: str) -> AgentResponse:
+    def _handle_fallback(
+        self, query: str, context: Optional[dict[str, Any]], error_msg: str
+    ) -> AgentResponse:
         """Handle fallback when the main agent fails."""
         query_lower = query.lower()
 
         # Check for citation requests
-        if any(phrase in query_lower for phrase in ["cite galaxy", "citation", "reference"]):
+        if any(
+            phrase in query_lower for phrase in ["cite galaxy", "citation", "reference"]
+        ):
             return AgentResponse(
                 content="""To cite Galaxy, please use: Nekrutenko, A., et al. (2024). The Galaxy platform for accessible, reproducible, and collaborative data analyses: 2024 update. Nucleic Acids Research. https://doi.org/10.1093/nar/gkae410
 
@@ -274,25 +331,49 @@ For specific tools, please also cite the individual tool publications.""",
             )
 
         # Check for error-related keywords
-        error_keywords = ["error", "fail", "crash", "not work", "broken", "stderr", "exit code", "died", "killed"]
+        error_keywords = [
+            "error",
+            "fail",
+            "crash",
+            "not work",
+            "broken",
+            "stderr",
+            "exit code",
+            "died",
+            "killed",
+        ]
         if any(kw in query_lower for kw in error_keywords):
             return AgentResponse(
                 content="I noticed you're asking about an error or failure. Unfortunately, I'm having trouble connecting to the AI service right now. Please try again in a moment, or check the job details panel for error information.",
                 confidence=ConfidenceLevel.LOW,
                 agent_type=self.agent_type,
                 suggestions=[],
-                metadata={"fallback": True, "reason": "error_query_service_unavailable", "error": error_msg},
+                metadata={
+                    "fallback": True,
+                    "reason": "error_query_service_unavailable",
+                    "error": error_msg,
+                },
             )
 
         # Check for explicit tool creation keywords
-        tool_keywords = ["create a tool", "build a tool", "make a tool", "wrap a tool", "tool wrapper"]
+        tool_keywords = [
+            "create a tool",
+            "build a tool",
+            "make a tool",
+            "wrap a tool",
+            "tool wrapper",
+        ]
         if any(kw in query_lower for kw in tool_keywords):
             return AgentResponse(
                 content="I noticed you want to create a Galaxy tool. Unfortunately, I'm having trouble connecting to the AI service right now. Please try again in a moment.",
                 confidence=ConfidenceLevel.LOW,
                 agent_type=self.agent_type,
                 suggestions=[],
-                metadata={"fallback": True, "reason": "tool_creation_service_unavailable", "error": error_msg},
+                metadata={
+                    "fallback": True,
+                    "reason": "tool_creation_service_unavailable",
+                    "error": error_msg,
+                },
             )
 
         # General fallback
@@ -301,7 +382,11 @@ For specific tools, please also cite the individual tool publications.""",
             confidence=ConfidenceLevel.LOW,
             agent_type=self.agent_type,
             suggestions=[],
-            metadata={"fallback": True, "reason": "service_unavailable", "error": error_msg},
+            metadata={
+                "fallback": True,
+                "reason": "service_unavailable",
+                "error": error_msg,
+            },
         )
 
     def _get_simple_system_prompt(self) -> str:
@@ -322,6 +407,4 @@ When uncertain, suggest the user check Galaxy documentation or the Galaxy Traini
 
     def _get_fallback_content(self) -> str:
         """Get fallback content for router failures."""
-        return (
-            "I'm having trouble processing your request. Please try again or check the Galaxy documentation for help."
-        )
+        return "I'm having trouble processing your request. Please try again or check the Galaxy documentation for help."

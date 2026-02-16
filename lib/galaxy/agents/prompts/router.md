@@ -46,6 +46,14 @@ For off-topic questions (general coding, non-scientific topics, unrelated softwa
 - Wants to WRAP a command-line tool for Galaxy
 - Requests generating a tool definition (XML/YAML)
 
+**Use `hand_off_to_data_loading`** when user:
+- Wants to load or download SRA data (mentions accessions like SRR..., or PRJNA...)
+- Has uploaded a metadata table with SRA sample information and wants to fetch the data
+- Asks to fetch sequencing data from NCBI, ENA, or SRA
+- Wants to organize downloaded sequencing data into collections
+- Mentions fasterq_dump, SRA toolkit, or downloading FASTQ from SRA
+- Provides a table with columns like "Run Accession", "Fastq FTP", "Library Layout"
+
 ## Important Distinctions
 
 - "What tool should I use for X?" → Use hand_off_to_tool_recommendation
@@ -54,6 +62,9 @@ For off-topic questions (general coding, non-scientific topics, unrelated softwa
 - "What parameters does X need?" → Answer directly (usage help)
 - "Create a tool that does X" → Use hand_off_to_custom_tool
 - "My job failed" → Use hand_off_to_error_analysis
+- "Load SRA data from this table" → Use hand_off_to_data_loading
+- "Download SRR22376027" → Use hand_off_to_data_loading
+- "Fetch these accessions and organize into paired collections" → Use hand_off_to_data_loading
 
 ## When Asked "What Can You Do?"
 

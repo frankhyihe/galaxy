@@ -11,6 +11,7 @@ from .base import (
     GalaxyAgentDependencies,
 )
 from .custom_tool import CustomToolAgent
+from .data_loading import DataLoadingAgent
 from .error_analysis import ErrorAnalysisAgent
 from .orchestrator import WorkflowOrchestratorAgent
 from .registry import AgentRegistry
@@ -25,6 +26,7 @@ __all__ = [
     "QueryRouterAgent",
     "ErrorAnalysisAgent",
     "CustomToolAgent",
+    "DataLoadingAgent",
     "WorkflowOrchestratorAgent",
     "ToolRecommendationAgent",
 ]
@@ -38,3 +40,4 @@ agent_registry.register(AgentType.ERROR_ANALYSIS, ErrorAnalysisAgent)
 agent_registry.register(AgentType.CUSTOM_TOOL, CustomToolAgent)
 agent_registry.register(AgentType.ORCHESTRATOR, WorkflowOrchestratorAgent)
 agent_registry.register(AgentType.TOOL_RECOMMENDATION, ToolRecommendationAgent)
+agent_registry.register(AgentType.DATA_LOADING, DataLoadingAgent)

@@ -92,7 +92,9 @@ def extract_result_content(result: Any) -> str:
     return str(result)
 
 
-def extract_structured_output(result: Any, expected_type: type, logger: Optional[logging.Logger] = None) -> Any:
+def extract_structured_output(
+    result: Any, expected_type: type, logger: Optional[logging.Logger] = None
+) -> Any:
     """Extract structured output from a pydantic-ai result.
 
     Checks if result.data or result.output is the expected type.
@@ -167,6 +169,7 @@ class AgentType:
     CUSTOM_TOOL = "custom_tool"
     ORCHESTRATOR = "orchestrator"
     TOOL_RECOMMENDATION = "tool_recommendation"
+    DATA_LOADING = "data_loading"
 
 
 # Internal agent response model (simplified for internal use)
@@ -208,7 +211,9 @@ class GalaxyAgentDependencies:
     tool_cache: Optional["ToolCache"] = None
     toolbox: Optional["ToolBox"] = None
     # Callable to get agent instances, avoids circular import in base.py
-    get_agent: Optional[Callable[[str, "GalaxyAgentDependencies"], "BaseGalaxyAgent"]] = None
+    get_agent: Optional[
+        Callable[[str, "GalaxyAgentDependencies"], "BaseGalaxyAgent"]
+    ] = None
     # Optional factory for creating model instances (useful for testing)
     model_factory: Optional[Callable[[], Any]] = None
 
@@ -225,7 +230,9 @@ class BaseGalaxyAgent(ABC):
         self.deps = deps
 
         if not hasattr(self, "agent_type") or not self.agent_type:
-            raise NotImplementedError(f"{self.__class__.__name__} must define 'agent_type' class attribute")
+            raise NotImplementedError(
+                f"{self.__class__.__name__} must define 'agent_type' class attribute"
+            )
 
         self.agent = self._create_agent()
 
@@ -269,12 +276,16 @@ class BaseGalaxyAgent(ABC):
         query_lower = query.lower()
         for pattern in suspicious_patterns:
             if pattern in query_lower:
-                log.warning(f"Potential prompt injection detected in {self.agent_type} query: {pattern}")
+                log.warning(
+                    f"Potential prompt injection detected in {self.agent_type} query: {pattern}"
+                )
                 # Don't reject, just log - could be legitimate
 
         return None
 
-    async def process(self, query: str, context: Optional[dict[str, Any]] = None) -> AgentResponse:
+    async def process(
+        self, query: str, context: Optional[dict[str, Any]] = None
+    ) -> AgentResponse:
         """
         Process a query and return structured response.
 
@@ -308,7 +319,9 @@ class BaseGalaxyAgent(ABC):
 
         except UnexpectedModelBehavior as e:
             log.exception(f"Unexpected model behavior in {self.agent_type} agent")
-            return self._get_fallback_response(query, f"Unexpected model behavior: {str(e)}")
+            return self._get_fallback_response(
+                query, f"Unexpected model behavior: {str(e)}"
+            )
 
         except OSError as e:
             log.warning(f"Network error in {self.agent_type} agent: {e}")
@@ -318,7 +331,9 @@ class BaseGalaxyAgent(ABC):
             log.exception(f"Value error in {self.agent_type} agent")
             return self._get_fallback_response(query, str(e))
 
-    async def _run_with_retry(self, prompt: str, max_retries: int = 3, base_delay: float = 1.0):
+    async def _run_with_retry(
+        self, prompt: str, max_retries: int = 3, base_delay: float = 1.0
+    ):
         """Run the agent, with exponential backoff for retries."""
         last_exception = None
 
@@ -330,7 +345,9 @@ class BaseGalaxyAgent(ABC):
 
         for attempt in range(max_retries + 1):
             try:
-                return await self.agent.run(prompt, deps=self.deps, model_settings=model_settings)
+                return await self.agent.run(
+                    prompt, deps=self.deps, model_settings=model_settings
+                )
 
             except Exception as e:
                 last_exception = e
@@ -383,7 +400,9 @@ class BaseGalaxyAgent(ABC):
 
         return "\n".join(prompt_parts)
 
-    def _format_response(self, result: Any, query: str, context: dict[str, Any]) -> AgentResponse:
+    def _format_response(
+        self, result: Any, query: str, context: dict[str, Any]
+    ) -> AgentResponse:
         """Convert pydantic-ai result to AgentResponse."""
         # Default implementation - subclasses can override
         content = extract_result_content(result)
@@ -419,7 +438,9 @@ class BaseGalaxyAgent(ABC):
         )
 
         if is_service_error:
-            content = "Unable to access the AI inference service. Please try again later."
+            content = (
+                "Unable to access the AI inference service. Please try again later."
+            )
         else:
             content = f"I'm having trouble processing your request right now. {self._get_fallback_content()}"
 
@@ -489,7 +510,10 @@ class BaseGalaxyAgent(ABC):
         Returns:
             None if valid, error message string if invalid.
         """
-        if self._requires_structured_output() and not self._supports_structured_output():
+        if (
+            self._requires_structured_output()
+            and not self._supports_structured_output()
+        ):
             model = self._get_agent_config("model", "unknown")
             return (
                 f"The model '{model}' failed to generate a tool definition due to JSON schema limitations. "
@@ -531,7 +555,10 @@ class BaseGalaxyAgent(ABC):
             if hasattr(self.deps.config, "ai_api_key") and self.deps.config.ai_api_key:
                 return self.deps.config.ai_api_key
         elif key == "api_base_url":
-            if hasattr(self.deps.config, "ai_api_base_url") and self.deps.config.ai_api_base_url:
+            if (
+                hasattr(self.deps.config, "ai_api_base_url")
+                and self.deps.config.ai_api_base_url
+            ):
                 return self.deps.config.ai_api_base_url
         # 4. Return provided default
         return default
@@ -564,7 +591,9 @@ class BaseGalaxyAgent(ABC):
         # Check for Anthropic models
         if model_spec.startswith("anthropic:"):
             if not HAS_ANTHROPIC:
-                raise ImportError("Anthropic support requires pydantic-ai[anthropic] to be installed")
+                raise ImportError(
+                    "Anthropic support requires pydantic-ai[anthropic] to be installed"
+                )
             model_name = model_spec[10:]  # Strip 'anthropic:' prefix
             anthropic_provider = AnthropicProvider(api_key=api_key)
             return AnthropicModel(model_name, provider=anthropic_provider)
@@ -572,7 +601,9 @@ class BaseGalaxyAgent(ABC):
         # Check for Google/Gemini models
         if model_spec.startswith("google:"):
             if not HAS_GOOGLE:
-                raise ImportError("Google support requires pydantic-ai[google] to be installed")
+                raise ImportError(
+                    "Google support requires pydantic-ai[google] to be installed"
+                )
             model_name = model_spec[7:]  # Strip 'google:' prefix
             google_provider = GoogleProvider(api_key=api_key)
             return GoogleModel(model_name, provider=google_provider)
@@ -660,14 +691,17 @@ class BaseGalaxyAgent(ABC):
             result = await target_agent.agent.run(
                 full_query,
                 deps=ctx.deps,
-                usage=usage or ctx.usage,  # Use provided usage or fall back to ctx.usage
+                usage=usage
+                or ctx.usage,  # Use provided usage or fall back to ctx.usage
                 model_settings=target_model_settings,
             )
 
             # Extract response data
             response_data = extract_result_content(result)
 
-            log.debug(f"Agent {self.agent_type} called {agent_type} via tool: '{query[:50]}...'")
+            log.debug(
+                f"Agent {self.agent_type} called {agent_type} via tool: '{query[:50]}...'"
+            )
 
             return response_data
 
@@ -702,7 +736,9 @@ class SimpleGalaxyAgent(BaseGalaxyAgent):
             system_prompt=self.get_system_prompt(),
         )
 
-    def _format_response(self, result: Any, query: str, context: dict[str, Any]) -> AgentResponse:
+    def _format_response(
+        self, result: Any, query: str, context: dict[str, Any]
+    ) -> AgentResponse:
         """Format simple text response."""
         content = extract_result_content(result)
 
@@ -726,7 +762,10 @@ class SimpleGalaxyAgent(BaseGalaxyAgent):
         """Extract confidence level from response content."""
         content_lower = content.lower()
 
-        if any(word in content_lower for word in ["uncertain", "might", "possibly", "unclear"]):
+        if any(
+            word in content_lower
+            for word in ["uncertain", "might", "possibly", "unclear"]
+        ):
             return ConfidenceLevel.LOW
         elif any(word in content_lower for word in ["likely", "probably", "confident"]):
             return ConfidenceLevel.HIGH
